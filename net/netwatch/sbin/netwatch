@@ -1,0 +1,67 @@
+#!/bin/sh
+
+host1=`uci get netwatch.server.remote1`
+host2=`uci get netwatch.server.remote2`
+led=`uci get netwatch.led.led`
+
+let sleep_time=1
+let have_led=0
+let n=0
+let l=0
+let f=0
+LED="/sys/class/leds/${led}/brightness"
+
+if [ -f $LED ] ; then
+  let have_led=1
+else
+  LED="/dev/null"
+fi
+
+lockfile=/var/lock/network_watch_x
+statfile=/var/network_watch
+if mkdir "$lockfile"
+then
+  trap 'exit $?' INT TERM
+  trap 'echo 0 > $LED ; echo $(date +%Y%m%dT%H%M%S): EXIT >> "$statfile"; rmdir "$lockfile";' EXIT
+else
+  echo "Lock failed - exit" >&2
+  exit 1 
+fi
+
+echo $(date +%Y%m%dT%H%M%S): start >> "$statfile"
+
+while :;
+do
+  if fping -q $host1 || fping -q $host2
+  then
+    if [ $have_led = 1 ]; then
+      if [ $(expr $n % 2) -eq 1 ]
+      then
+        echo 1 > $LED
+      else
+        echo 0 > $LED
+      fi
+    fi
+    if [ $l -ne 0 ]; then
+      date=$(date +%Y%m%dT%H%M%S)
+      let "l=0"
+      let "f=0"
+      ns=$(date +%s)                                                                                                                 
+      let "ns=ns-s"
+      echo "$date: recovered (in $ns)" >> "$statfile"
+    fi
+  else
+    if [ $l -eq 0 ]; then
+      date=$(date +%Y%m%dT%H%M%S)
+      let "l=1"
+      let "f=1"
+      $s=$(date +%s)                                                                                                                 
+      let "ns=ns-s"
+      echo "$date: recovered (in $ns)" >> "$statfile"
+    fi
+  fi
+  let "n++"
+  echo sleep $sleep_time
+  sleep $sleep_time
+done
+
